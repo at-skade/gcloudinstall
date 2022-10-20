@@ -2,6 +2,8 @@ Aim of tbis script is to Automate the installation of gcloud cli.
 I have placed this script into a Jamf policy for use in Jamf Self Service, this is because it also requires user authentication.
 Authentication assiociated gcloud cli with the correct google account.
 
+
+```
 #!/bin/bash
 
 #Logged in user
@@ -20,3 +22,5 @@ rm -rf /Users/$USER/google-cloud-sdk
 /Users/$USER/.config/google-cloud-sdk/bin/gcloud auth application-default login
 
 exit 0
+
+```
