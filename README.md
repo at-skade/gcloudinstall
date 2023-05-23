@@ -5,7 +5,7 @@ Authentication assiociated gcloud cli with the correct google account.
 Version 2 - Improve reliability and corrected ownership permissions post install by installing in user context. Added functionality for Dock config.
 
 
-#!/bin/zsh
+''#!/bin/zsh
 
 # Should be running as root (in self-serve portal)
 if [ "$(whoami)" != "root" ]; then
@@ -81,4 +81,4 @@ if command -v "docker" &>/dev/null; then
   su "$USER" -c "gcloud auth configure-docker --quiet > /dev/null 2>&1"
 fi
 
-exit 
+exit ''
