@@ -2,25 +2,83 @@ Aim of tbis script is to Automate the installation of gcloud cli.
 I have placed this script into a Jamf policy for use in Jamf Self Service, this is because it also requires user authentication.
 Authentication assiociated gcloud cli with the correct google account.
 
+Version 2 - Improve reliability and corrected ownership permissions post install by installing in user context. Added functionality for Dock config.
 
-```
-#!/bin/bash
 
-#Logged in user
-USER=$(stat -f%Su /dev/console)
+#!/bin/zsh
 
-#Pull installer
-curl -s https://dl.google.com/dl/cloudsdk/release/install_google_cloud_sdk.bash | bash /dev/stdin --disable-prompts --install-dir=/Users/$USER/.config
+# Should be running as root (in self-serve portal)
+if [ "$(whoami)" != "root" ]; then
+  echo "This installer assumes that it is being ran as root. Please run the installer as root."
+  exit 1
+fi
 
-echo "Correcting permissions on gcloud folder"
-chown -R $USER:wheel /Users/$USER/.config/gcloud
+#logged in user
+USER=$(stat -f "%Su" "/dev/console")
 
-#Tidy up installer files
-rm -rf /Users/$USER/google-cloud-sdk
+USER_HOME_DIR="/Users/${USER}"
+GCLOUD_INSTALL_DIR="${USER_HOME_DIR}/google-cloud-sdk"
+GCLOUD_CONFIG_DIR="${USER_HOME_DIR}/.config/gcloud"
+ZSH_RC_FILE="${USER_HOME_DIR}/.zshrc"
 
-#Prompt for login
-/Users/$USER/.config/google-cloud-sdk/bin/gcloud auth application-default login
+# Remove any existing install
+if [ -d "${GCLOUD_INSTALL_DIR}" ]; then
+  echo "Google Cloud SDK already installed... Removing existing install..."
 
-exit 0
+  rm -rf "${GCLOUD_INSTALL_DIR}"
+fi
 
-```
+# Remove any existing gcloud config
+if [ -d "${GCLOUD_CONFIG_DIR}" ]; then
+  echo "Google Cloud config directory found... Removing..."
+
+  rm -rf "${GCLOUD_CONFIG_DIR}"
+fi
+
+# Ensure that the zshrc file exists
+if [ ! -f "${ZSH_RC_FILE}" ]; then
+  echo "Creating ${ZSH_RC_FILE}..."
+  touch "${ZSH_RC_FILE}"
+  chown "${USER}" "${ZSH_RC_FILE}"
+fi
+
+# Ensure that the file is not owned by root (a previous version of this script left it owned by root)
+if [ "$(stat -f "%Su" "${ZSH_RC_FILE}")" = "root" ]; then
+  echo "Fixing ownership of ${ZSH_RC_FILE}..."
+  chown "${USER}" "${ZSH_RC_FILE}"
+fi
+
+echo "Installing gcloud SDK..."
+
+#Run the gcloud installer as the user
+su "$USER" -c "curl -s https://dl.google.com/dl/cloudsdk/release/install_google_cloud_sdk.bash | zsh /dev/stdin --disable-prompts --install-dir=${USER_HOME_DIR}"
+
+sleep 2
+
+## The next line updates PATH for the Google Cloud SDK.
+if [ "$(grep -c "source ${GCLOUD_INSTALL_DIR}/path.zsh.inc" "${ZSH_RC_FILE}")" -eq 0 ]; then
+  echo "source ${GCLOUD_INSTALL_DIR}/path.zsh.inc" >>"${ZSH_RC_FILE}"
+fi
+
+## The next line enables zsh completion for gcloud.
+if [ "$(grep -c "source ${GCLOUD_INSTALL_DIR}/completion.zsh.inc" "${ZSH_RC_FILE}")" -eq 0 ]; then
+  echo "source ${GCLOUD_INSTALL_DIR}/completion.zsh.inc" >>"${ZSH_RC_FILE}"
+fi
+
+# Prompt the user for normal login
+su "$USER" -c "${GCLOUD_INSTALL_DIR}/bin/gcloud auth login"
+
+# Prompt the user for application default login
+su "$USER" -c "${GCLOUD_INSTALL_DIR}/bin/gcloud auth application-default login"
+
+#Correct Permissions on application default file
+chown "$USER" "${USER_HOME_DIR}/.config/gcloud/application_default_credentials.json"
+
+# If docker is installed, configure it for the user
+if command -v "docker" &>/dev/null; then
+  echo "Configuring docker for gcloud"
+
+  su "$USER" -c "gcloud auth configure-docker --quiet > /dev/null 2>&1"
+fi
+
+exit 
